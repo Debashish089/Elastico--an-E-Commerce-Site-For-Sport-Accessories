@@ -15,9 +15,11 @@ const product = require('./routes/productRoute');
 
 const user = require('./routes/userRoute');
 
+const order = require('./routes/orderRoute');
+
 app.use("/api/v1", product);
 app.use("/api/v1", user);     // eta likhar karone userRoute e router.route("/register") likkhte parbo, naile barbar router.route("api/v1/register") likha lagto
-
+app.use("/api/v1", order);
 
 // middleware for error
 

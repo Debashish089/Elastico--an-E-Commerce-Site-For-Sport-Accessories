@@ -200,3 +200,161 @@ exports.resetPassword = catchAsyncErrors(async (req, res, next) => {
    sendToken(user, 200, res);  // user ke new password e login korte dilam
 
 }); 
+
+// get user detail
+
+exports.getUserDetails = catchAsyncErrors(async(req, res, next) =>{
+
+    const user = await User.findById(req.user.id);   // auth.js e req.user e user er id diye tar sob info store rekhechi
+
+    res.status(200).json({
+
+        success: true,
+        user,
+    });
+
+});
+
+
+// Update user password
+
+exports.updatePassword = catchAsyncErrors(async(req, res, next) =>{
+
+    const user = await User.findById(req.user.id).select("+password");   // password select korlam
+
+    const isPasswordMatched = await user.comparePassword(req.body.oldPassword);  // req.body theke old password pabo
+
+    if(! isPasswordMatched){             // pass matched na hole ErrorHander e pathay dibo
+
+        return next(new ErrorHander("Old password is not correct"), 400);   // status code 401 means unauthorized
+    }
+
+    if(req.body.newPassword !== req.body.confirmPassword){
+
+        return next(new ErrorHander("passwaord not matched", 400));
+
+    }
+
+    user.password = req.body.newPassword;   // pass matched hole user password update hbe
+
+    await user.save()   // user save korlam
+
+    sendToken(user, 200, res);
+
+});
+
+
+// update user profile
+
+exports.updateProfile = catchAsyncErrors(async(req, res, next) =>{
+
+    const newUserData ={      // newUserData object jekhane new data store hbe
+
+        name: req.body.name,
+        email: req.body.email,
+
+    };
+
+    const user = await User.findByIdAndUpdate(req.user.id, newUserData, {    // id diye find krbe user k and newUserData diye user update hbe
+
+        new: true,
+        runValidators: true,
+        useFindAndModify: false,
+    
+    });
+
+    res.status(200).json({
+
+        success: true,
+
+    });
+
+});
+
+
+// Get all users- admin
+
+exports.getAllUser = catchAsyncErrors(async(req, res, next) =>{
+
+    const users = await User.find();
+
+    res.status(200).json({
+
+        success: true,
+        users,
+    });
+});
+
+
+// Get user details(admin)
+
+exports.getSingleUser = catchAsyncErrors(async(req, res, next) =>{
+
+    const user = await User.findById(req.params.id);
+
+    if(!user){
+
+        return next(new ErrorHander(`User does not exist with id: ${req.params.id}`)) 
+    }
+
+    res.status(200).json({
+
+        success: true,
+        user,
+    });
+});
+
+
+// update user Role- Admin
+
+exports.updateUserRole = catchAsyncErrors(async(req, res, next) =>{
+
+    const newUserData ={      // newUserData object jekhane new data store hbe, admin theke input(req.body) niye store kre rakhbe ki changes anbe
+
+        name: req.body.name,
+        email: req.body.email,
+        role: req.body.role,
+
+    };
+
+
+    const user = await User.findByIdAndUpdate(req.params.id, newUserData, {    // id diye find krbe user k and newUserData diye user update hbe..ekhane req.body.id na diye req.params.id hoyeche cz amra Api te link e j id search korbo oi id delete krte chai. req.body holo jeta amra type kori api er 'body' part e
+
+        new: true,
+        runValidators: true,
+        useFindAndModify: false,
+    
+    });
+
+    res.status(200).json({
+
+        success: true,
+
+    });
+
+});
+
+
+// Delete user- Admin
+
+exports.DeleteUser = catchAsyncErrors(async(req, res, next) =>{
+
+
+    const user = await User.findById(req.params.id);
+
+    if(!user){
+
+        return next(new ErrorHander(`User doesnt exist with id: ${req.params.id} `))
+    }
+
+
+    await user.deleteOne();    // user pele remove kre dibe oke
+
+    res.status(400).json({
+
+        success: true,
+        message: "User deleted",
+
+    });
+
+});
