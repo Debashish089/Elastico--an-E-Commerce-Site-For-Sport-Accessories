@@ -16,3 +16,7 @@ User review and rating,
 Get all reviews,
 Delete review, 
 Get/update/Delete orders--admin
+
+Sprint 3:
+Completed Frontend
+
