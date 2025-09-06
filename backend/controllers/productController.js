@@ -2,6 +2,7 @@ const Product = require("../models/productModel");
 const ErrorHander = require("../utils/errorhander");
 const catchAsyncErrors = require("../middleware/catchAsyncErrors");
 const ApiFeatures = require("../utils/apifeatures");
+const cloudinary = require("cloudinary");
 
 
 
@@ -11,6 +12,35 @@ const ApiFeatures = require("../utils/apifeatures");
 
 exports.createProduct = catchAsyncErrors(async (req, res, next)=>{   //catchAsyncErrors func e pass korchi jeta ache middleware er catchAsyncErrors.js e
     
+    if (!req.user || !req.user.id) {
+        return next(new ErrorHander("User not authenticated", 401));
+    }
+    req.body.user = req.user.id;
+
+    let images = [];
+
+    if (typeof req.body.images === "string") {
+        images.push(req.body.images);
+    } 
+    else {
+        images = req.body.images;
+    }
+
+    const imagesLinks = [];
+
+    for (let i = 0; i < images.length; i++) {
+        const result = await cloudinary.v2.uploader.upload(images[i], {
+            folder: "products",
+        });
+
+        imagesLinks.push({
+            public_id: result.public_id,
+            url: result.secure_url,
+        });
+    }
+
+    req.body.images = imagesLinks;
+      
     req.body.user = req.user.id         // auth.js e login er smy user er sob store kore niyechilam ,sekhan theke user id pabo
 
     const product = await Product.create(req.body);
@@ -26,21 +56,40 @@ exports.createProduct = catchAsyncErrors(async (req, res, next)=>{   //catchAsyn
 
 exports.getAllProducts = catchAsyncErrors(async (req, res)=>{
 
-    const resultPerPage = 5;   //pagination...ek page e koyta product dekhabo
+    const resultPerPage = 8;   //pagination...ek page e koyta product dekhabo
 
-    const productCount = await Product.countDocuments();
+    const productsCount = await Product.countDocuments();
 
     const apiFeature = new ApiFeatures(Product.find(), req.query)
         .search()
-        .filter()                    // search ar filter func call kore product find korche
-        .pagination(resultPerPage);  
+        .filter();                    // search ar filter func call kore product find korche  
     
-        const products = await apiFeature.query;
+    // Count how many products match the filters (before pagination)
+    const filteredProductsCount = await apiFeature.query.clone().countDocuments(); 
+    
+    apiFeature.pagination(resultPerPage);
+
+
+    const products = await apiFeature.query;   // Execute the paginated query
 
     res.status(200).json({
         success:true,
         products, 
+        productsCount,
+        resultPerPage,
+        filteredProductsCount,
     });
+});
+
+
+// Get All Product (Admin)
+exports.getAdminProducts = catchAsyncErrors(async (req, res, next) => {
+  const products = await Product.find();
+
+  res.status(200).json({
+    success: true,
+    products,
+  });
 });
 
 
@@ -48,7 +97,7 @@ exports.getAllProducts = catchAsyncErrors(async (req, res)=>{
 
 exports.getProductDetails = catchAsyncErrors(async(req,res,next)=>{
 
-    const product = await Product.findByIdAndDelete(req.params.id);  
+    const product = await Product.findById(req.params.id);  
 
        if(!product){          // product na pele  errorhander e message and status code(404) pathay dibo, pore errorhander error show korbe
 
@@ -62,7 +111,6 @@ exports.getProductDetails = catchAsyncErrors(async(req,res,next)=>{
 
     success:true,
     product,
-    productCount,
 
    });
 
@@ -72,31 +120,58 @@ exports.getProductDetails = catchAsyncErrors(async(req,res,next)=>{
 
 // update products-- Admin
 
-exports.updateProduct = catchAsyncErrors(async(req, res, next)=>{
+exports.updateProduct = catchAsyncErrors(async (req, res, next) => {
+  let product = await Product.findById(req.params.id);
 
-   let product = await Product.findById(req.params.id);
+  if (!product) {
+    return next(new ErrorHandler("Product not found", 404));
+  }
 
-    if(!product){          // product na pele  errorhander e message and status code(404) pathay dibo, pore errorhander error show korbe
+  // Check if new images are provided
+  if (req.body.images && req.body.images.length > 0) {
+    // If images come as string (single image), wrap into array
+    let images = [];
+    if (typeof req.body.images === "string") {
+      images.push(req.body.images);
+    } else {
+      images = req.body.images;
+    }
 
-            return next(new ErrorHander("Product not found", 404));
+    // Delete old images from cloudinary
+    for (let i = 0; i < product.images.length; i++) {
+      await cloudinary.v2.uploader.destroy(product.images[i].public_id);
+    }
 
-      }
-   
-   product = await Product.findByIdAndUpdate(req.params.id, req.body, {  // product pele update korbo
-    
-    new:true, 
-    runValidators:true,
-    useFindAndModify:false
+    // Upload new images
+    const imagesLinks = [];
+    for (let i = 0; i < images.length; i++) {
+      const result = await cloudinary.v2.uploader.upload(images[i], {
+        folder: "products",
+      });
 
+      imagesLinks.push({
+        public_id: result.public_id,
+        url: result.secure_url,
+      });
+    }
+
+    req.body.images = imagesLinks; // replace with new images
+  } else {
+    req.body.images = product.images; // keep old images
+  }
+
+  product = await Product.findByIdAndUpdate(req.params.id, req.body, {
+    new: true,
+    runValidators: true,
+    useFindAndModify: false,
+  });
+
+  res.status(200).json({
+    success: true,
+    product,
+  });
 });
-   
-res.status(200).json({
-    success:true,
-    product,               // update er por ei updated product pathay dilam
 
-});
-
-});
 
 // Delete products-- Admin
 
@@ -112,7 +187,15 @@ exports.deleteProduct = catchAsyncErrors(async(req, res, next)=>{
 
      // product pele delete kore dibo and message pathabo dlt er
 
-   res.status(200).json({
+     // Deleting Images From Cloudinary
+     for (let i = 0; i < product.images.length; i++) {
+        await cloudinary.v2.uploader.destroy(product.images[i].public_id);
+     }
+
+     await product.deleteOne();
+   
+   
+     res.status(200).json({
 
     success:true,
     message: "Product deleted successfully",

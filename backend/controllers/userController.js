@@ -5,30 +5,30 @@ const User = require("../models/userModel");
 const sendToken = require("../utils/jwtToken");
 const sendEmail = require("../utils/sendEmail");
 const crypto = require("crypto");
+const cloudinary = require("cloudinary");
 
 
-// register user
+// Register a User
+exports.registerUser = catchAsyncErrors(async (req, res, next) => {
+  const myCloud = await cloudinary.v2.uploader.upload(`data:image/png;base64,${req.body.avatar}`, {
+    folder: "avatars",
+    width: 150,
+    crop: "scale",
+  });
 
-exports.registerUser = catchAsyncErrors( async(req,res,next) =>{
+  const { name, email, password } = req.body;
 
-    const {name, email, password, role} = req.body;   // name, email, password, role diye user create korte parbo, baki values default dhore nibe
+  const user = await User.create({
+    name,
+    email,
+    password,
+    avatar: {
+      public_id: myCloud.public_id,
+      url: myCloud.secure_url,
+    },
+  });
 
-    const user = await User.create({
-
-        name,email,password, role,
-        avatar:{
-
-            public_id: "This is a sample id",
-            url: "profilepicUrl",
-
-
-        }
-    });
-
-
-    sendToken(user, 201, res);  // token pathay dilam sendToken func diye, jeta jwtToken e banano
-
-
+  sendToken(user, 201, res);
 });
 
 
@@ -113,7 +113,7 @@ exports.forgotPassword = catchAsyncErrors(async (req, res, next) =>{
    
    await user.save({validateBeforeSave: false});   //  user take save korlam
 
-   const resetPasswordUrl = `${req.protocol}://${req.get("host")}/api/v1/password/reset/${resetToken}`   //req.protocol = http/https. 
+   const resetPasswordUrl = `${process.env.FRONTEND_URL}/password/reset/${resetToken}`;  // mail e je link jabe take frontend er url thakbe, jate link e click korlei frontend age open hote pare
 
    const message = `Your Password Reset Token is:- \n\n ${resetPasswordUrl} \n\nIf you have not requested this email
    then please ignore it`;  // ei msg pathabo, \n\n means newline, 2 line niche jabe
@@ -255,6 +255,28 @@ exports.updateProfile = catchAsyncErrors(async(req, res, next) =>{
 
     };
 
+    if (req.body.avatar) {
+        const user = await User.findById(req.user.id);
+
+        // delete old avatar from cloudinary
+        if (user.avatar && user.avatar.public_id) {
+            await cloudinary.v2.uploader.destroy(user.avatar.public_id);
+        }
+
+        // upload new avatar
+        const myCloud = await cloudinary.v2.uploader.upload(`data:image/png;base64,${req.body.avatar}`, {
+            folder: "avatars",
+            width: 150,
+            crop: "scale",
+        });
+
+        newUserData.avatar = {
+            public_id: myCloud.public_id,
+            url: myCloud.secure_url,
+        };
+    }
+
+
     const user = await User.findByIdAndUpdate(req.user.id, newUserData, {    // id diye find krbe user k and newUserData diye user update hbe
 
         new: true,
@@ -266,6 +288,7 @@ exports.updateProfile = catchAsyncErrors(async(req, res, next) =>{
     res.status(200).json({
 
         success: true,
+        user,
 
     });
 

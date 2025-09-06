@@ -15,6 +15,7 @@ const sendToken = (user, statusCode, res) => {
         ),
 
         httpOnly:true,
+        
     };
 
     res.status(statusCode).cookie('token', token, options).json({   // cookie('keyword', token pathalam, options variable pathalam)
